@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Simulateur de saisie comptable ERP by Sosoa (TVA)</title>
+  <style>
+    body {
+  font-family: "Kalam", sans-serif;
+    }#c964549d
+      margin: 40px;
+      background: #f5f5f5;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: #fff;
+      margin-bottom: 20px;
+    }
+    th, td {
+      border: 1px solid #bbb;
+      padding: 8px 5px;
+      text-align: center;
+    }
+    th {
+      background: #e0e0e0;
+    }
+    input:read-only {
+      background: #f0f0f0;
+      border: none;
+    }
+    .total-row {
+      background: #f0f8ff;
+      font-weight: bold;
+    }
+    .actions {
+      display: flex;
+      justify-content: center;
+      gap: 4px;
+    }
+    .export-btn {
+      margin-right: 15px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Simulateur de saisie comptable ERP (avec TVA par ligne)</h2>
+
+<table id="journal">
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Pièce</th>
+      <th>Libellé</th>
+      <th>Compte</th>
+      <th>Débit (€)</th>
+      <th>Crédit (€)</th>
+      <th>TVA (%)</th>
+      <th>Montant TVA (€)</th>
+      <th>Montant TTC (€)</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody id="journal-body">
+    <!-- Les lignes d'écriture iront ici -->
+  </tbody>
+  <tfoot>
+    <tr class="total-row">
+      <td colspan="4">Totaux</td>
+      <td id="total-debit">0.00</td>
+      <td id="total-credit">0.00</td>
+      <td></td>
+      <td id="total-tva">0.00</td>
+      <td id="total-ttc">0.00</td>
+      <td></td>
+    </tr>
+  </tfoot>
+</table>
+
+<button onclick="addLine()" style="margin-bottom:20px;">Ajouter une ligne</button>
+<button class="export-btn" onclick="exportCSV()">Exporter en CSV</button>
+<span id="balance-msg"></span>
+
+<script>
+function addLine(vals={}) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="date" value="${vals.date||""}"></td>
+    <td><input type="text" placeholder="N° pièce" value="${vals.piece||""}"></td>
+    <td><input type="text" placeholder="Libellé" value="${vals.libelle||""}"></td>
+    <td><input type="text" placeholder="Compte" value="${vals.compte||""}"></td>
+    <td><input type="number" step="0.01" min="0" value="${vals.debit||""}" oninput="recalc(this)"></td>
+    <td><input type="number" step="0.01" min="0" value="${vals.credit||""}" oninput="recalc(this)"></td>
+    <td>
+      <select onchange="recalc(this)">
+        <option value="0" ${vals.tva=="0"?"selected":""}>0%</option>
+        <option value="5.5" ${vals.tva=="5.5"?"selected":""}>5.5%</option>
+        <option value="10" ${vals.tva=="10"?"selected":""}>10%</option>
+        <option value="20" ${vals.tva=="20"?"selected":""}>20%</option>
+      </select>
+    </td>
+    <td><input type="number" step="0.01" readonly></td>
+    <td><input type="number" step="0.01" readonly></td>
+    <td class="actions">
+      <button onclick="this.closest('tr').remove(); updateTotals();">🗑️</button>
+    </td>
+  `;
+  document.getElementById('journal-body').appendChild(tr);
+  recalc(tr); // Calcul initial
+}
+
+function recalc(el) {
+  // Récupération de la ligne
+  let tr = el.closest('tr') || el;
+  let debit = parseFloat(tr.children[4].firstElementChild.value)||0;
+  let credit = parseFloat(tr.children[5].firstElementChild.value)||0;
+  let tva = parseFloat(tr.children[6].firstElementChild.value)||0;
+  let base = debit>0 ? debit : credit;
+  let montant_tva = +(base * tva / 100).toFixed(2);
+  let montant_ttc = +(base + montant_tva).toFixed(2);
+  tr.children[7].firstElementChild.value = base>0 ? montant_tva : "";
+  tr.children[8].firstElementChild.value = base>0 ? montant_ttc : "";
+  updateTotals();
+}
+
+function updateTotals() {
+  let rows = document.querySelectorAll('#journal-body tr');
+  let totalDebit=0, totalCredit=0, totalTVA=0, totalTTC=0;
+  rows.forEach(tr=>{
+    let debit = parseFloat(tr.children[4].firstElementChild.value)||0;
+    let credit = parseFloat(tr.children[5].firstElementChild.value)||0;
+    let tva = parseFloat(tr.children[7].firstElementChild.value)||0;
+    let ttc = parseFloat(tr.children[8].firstElementChild.value)||0;
+    totalDebit += debit;
+    totalCredit += credit;
+    totalTVA += tva;
+    totalTTC += ttc;
+  });
+  document.getElementById('total-debit').textContent = totalDebit.toFixed(2);
+  document.getElementById('total-credit').textContent = totalCredit.toFixed(2);
+  document.getElementById('total-tva').textContent = totalTVA.toFixed(2);
+  document.getElementById('total-ttc').textContent = totalTTC.toFixed(2);
+  let msg = '';
+  if (totalDebit === totalCredit) {
+    msg = "Écriture équilibrée.";
+    document.getElementById('balance-msg').style.color = 'green';
+  } else {
+    msg = "⚠️ Débits et crédits déséquilibrés.";
+    document.getElementById('balance-msg').style.color = 'red';
+  }
+  document.getElementById('balance-msg').textContent = msg;
+}
+
+function exportCSV() {
+  let rows = [...document.querySelectorAll('#journal tr')];
+  let csv = '';
+  for(let row of rows) {
+    let cols = row.querySelectorAll('th, td');
+    let vals = [];
+    cols.forEach(col=>{
+      let input=col.querySelector('input,select');
+      if(input) {
+        if(input.tagName==='SELECT')
+          vals.push(input.options[input.selectedIndex].text);
+        else
+          vals.push(input.value.replace(/"/g,'""'));
+      }
+      else
+        vals.push(col.textContent.replace(/"/g,'""'));
+    });
+    csv += '"'+vals.join('","')+'"\n';
+  }
+  let blob = new Blob([csv], {type:'text/csv'});
+  let url = URL.createObjectURL(blob);
+  let a = document.createElement('a');
+  a.href = url;
+  a.download = 'journal-comptable.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Première ligne pour l'exemple
+addLine();
+</script>
+</body>
+</html>
